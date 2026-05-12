@@ -1,0 +1,58 @@
+import type { Zone } from "./types";
+
+export const zones: Zone[] = [
+  {
+    id: "casco",
+    name: "Casco Antiguo",
+    category: "exterior",
+    comfort: 68,
+    crowding: "Media",
+    recommendation: "Recorrer a primera hora o combinar con paradas interiores.",
+    avoidHeat: true,
+  },
+  {
+    id: "explanada",
+    name: "Explanada",
+    category: "exterior",
+    comfort: 72,
+    crowding: "Alta",
+    recommendation: "Mejor al atardecer, con menor radiación y más brisa.",
+    avoidHeat: true,
+  },
+  {
+    id: "postiguet",
+    name: "Postiguet",
+    category: "playa",
+    comfort: 64,
+    crowding: "Alta",
+    recommendation: "Playa temprana, salida antes del pico térmico.",
+    avoidHeat: true,
+  },
+  {
+    id: "pozos",
+    name: "Museo de Aguas / Pozos de Garrigós",
+    category: "interior",
+    comfort: 88,
+    crowding: "Baja",
+    recommendation: "Opción prioritaria durante horas de calor.",
+    avoidHeat: false,
+  },
+  {
+    id: "marq",
+    name: "MARQ",
+    category: "cultura",
+    comfort: 91,
+    crowding: "Media",
+    recommendation: "Muy recomendable para tarde cultural climatizada.",
+    avoidHeat: false,
+  },
+  {
+    id: "san-juan",
+    name: "Playa de San Juan",
+    category: "playa",
+    comfort: 70,
+    crowding: "Media",
+    recommendation: "Mejor a última hora, con menor presión térmica.",
+    avoidHeat: true,
+  },
+];
