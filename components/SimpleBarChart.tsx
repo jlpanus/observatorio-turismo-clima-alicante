@@ -9,17 +9,17 @@ type SimpleBarChartProps = {
 
 export function SimpleBarChart({ data }: SimpleBarChartProps) {
   return (
-    <div className="flex h-56 items-end gap-3 rounded-lg border border-slate-200 bg-white p-5">
+    <div className="flex h-56 items-end gap-3 rounded-[24px] border border-alicante-border bg-white p-5 shadow-soft">
       {data.map((item) => (
         <div className="flex flex-1 flex-col items-center gap-2" key={item.label}>
-          <div className="flex h-40 w-full items-end rounded-md bg-slate-100">
+          <div className="flex h-40 w-full items-end rounded-2xl bg-alicante-mist">
             <div
-              className="w-full rounded-md bg-alicante-blue"
+              className="w-full rounded-2xl bg-alicante-violet"
               style={{ height: `${item.value}%` }}
               title={`${item.label}: ${item.value}%`}
             />
           </div>
-          <span className="text-xs font-semibold text-slate-600">{item.label}</span>
+          <span className="text-xs font-bold text-alicante-muted">{item.label}</span>
         </div>
       ))}
     </div>
