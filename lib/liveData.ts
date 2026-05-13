@@ -1,11 +1,25 @@
-import { alerts as fallbackAlerts } from "@/data/alerts";
+﻿import { alerts as fallbackAlerts } from "@/data/alerts";
 import { fallbackAnnualForeignVisitorsThousands, monthlyComfortReference, visitorSeasonalWeights } from "@/data/monthlySeries";
-import { recommendations as fallbackRecommendations } from "@/data/recommendations";
 
 const ALICANTE = {
   latitude: 38.3452,
   longitude: -0.481,
 };
+
+const ALICANTE_PLACES_BBOX = {
+  south: 38.32,
+  west: -0.546,
+  north: 38.435,
+  east: -0.35,
+};
+
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.openstreetmap.ru/api/interpreter",
+];
+
+const OVERPASS_USER_AGENT = "ObservatorioDigitalTurismoClimaAlicante/1.0 (local MVP)";
 
 export type LiveWeather = {
   source: string;
@@ -54,6 +68,25 @@ export type LiveEvent = {
   recommendationReason: string;
 };
 
+export type TourismPlace = {
+  id: string;
+  title: string;
+  source: string;
+  sourceUrl: string;
+  link: string;
+  category: string;
+  summary: string;
+  image: string;
+  indoorLikely: boolean;
+  recommendationReason: string;
+  rating?: number;
+  userRatingCount?: number;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+};
+
+
 export type MonthlyTourismSeries = {
   annualVisitorsThousands: number;
   points: { month: string; comfort: number; visitors: number }[];
@@ -89,6 +122,19 @@ type WordpressEvent = {
   excerpt?: { rendered?: string };
   content?: { rendered?: string };
   class_list?: string[];
+};
+
+type OverpassResponse = {
+  elements?: OverpassElement[];
+};
+
+type OverpassElement = {
+  type: "node" | "way" | "relation";
+  id: number;
+  lat?: number;
+  lon?: number;
+  center?: { lat?: number; lon?: number };
+  tags?: Record<string, string>;
 };
 
 export async function getLiveWeather(): Promise<LiveWeather> {
@@ -161,28 +207,140 @@ export async function getLiveWeather(): Promise<LiveWeather> {
 }
 
 export async function getLiveEvents(): Promise<LiveEvent[]> {
-  const [tourism, cityAgenda, congress] = await Promise.all([
-    fetchAlicanteTourismEvents(),
-    fetchMunicipalTourismAgenda(),
-    fetchConventionEvents(),
-  ]);
+  const tourism = await fetchAlicanteTourismEvents();
+  const upcoming = dedupeEvents(tourism).filter((event) => isUpcomingDateLabel(event.dateLabel));
+  return upcoming.slice(0, 12);
+}
 
-  const merged = [...tourism, ...cityAgenda, ...congress];
-  if (merged.length > 0) return dedupeEvents(merged).slice(0, 10);
+export async function getTourismPlaces(): Promise<TourismPlace[]> {
+  const query = buildOverpassPlacesQuery();
 
-  return fallbackRecommendations.slice(0, 6).map((item) => ({
-    id: `fallback-${item.id}`,
-    title: item.name,
-    source: "Datos mock locales",
-    sourceUrl: "/que-hacer-hoy",
-    link: "/que-hacer-hoy",
-    dateLabel: item.bestTime,
-    location: "Alicante",
-    category: item.type,
-    summary: item.reason,
-    indoorLikely: item.setting === "Interior",
-    recommendationReason: "Fallback local mientras no responde la agenda online.",
-  }));
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const response = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`, {
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+          "User-Agent": OVERPASS_USER_AGENT,
+        },
+        signal: AbortSignal.timeout(12000),
+      });
+
+      if (!response.ok) continue;
+      const data = (await response.json()) as OverpassResponse;
+      const places = dedupeOverpassPlaces(
+        (data.elements ?? []).map(overpassElementToTourismPlace).filter((place): place is TourismPlace => Boolean(place)),
+      ).slice(0, 18);
+
+      if (places.length > 0) return places;
+    } catch {
+      continue;
+    }
+  }
+
+  return [];
+}
+
+function buildOverpassPlacesQuery() {
+  const bbox = `${ALICANTE_PLACES_BBOX.south},${ALICANTE_PLACES_BBOX.west},${ALICANTE_PLACES_BBOX.north},${ALICANTE_PLACES_BBOX.east}`;
+
+  return `
+    [out:json][timeout:12];
+    (
+      node(${bbox})["tourism"~"attraction|museum|viewpoint|gallery|artwork"]["name"];
+      way(${bbox})["tourism"~"attraction|museum|viewpoint|gallery|artwork"]["name"];
+      relation(${bbox})["tourism"~"attraction|museum|viewpoint|gallery|artwork"]["name"];
+      node(${bbox})["historic"~"castle|monument|memorial|archaeological_site"]["name"];
+      way(${bbox})["historic"~"castle|monument|memorial|archaeological_site"]["name"];
+      relation(${bbox})["historic"~"castle|monument|memorial|archaeological_site"]["name"];
+      node(${bbox})["leisure"~"park|garden|nature_reserve"]["name"];
+      way(${bbox})["leisure"~"park|garden|nature_reserve"]["name"];
+      relation(${bbox})["leisure"~"park|garden|nature_reserve"]["name"];
+      node(${bbox})["natural"="beach"]["name"];
+      way(${bbox})["natural"="beach"]["name"];
+      relation(${bbox})["natural"="beach"]["name"];
+      node(${bbox})["amenity"~"theatre|arts_centre"]["name"];
+      way(${bbox})["amenity"~"theatre|arts_centre"]["name"];
+      relation(${bbox})["amenity"~"theatre|arts_centre"]["name"];
+    );
+    out center tags 80;
+  `;
+}
+
+function overpassElementToTourismPlace(element: OverpassElement): TourismPlace | undefined {
+  const tags = element.tags ?? {};
+  const title = tags["name:es"] ?? tags.name;
+  if (!title) return undefined;
+
+  const latitude = element.lat ?? element.center?.lat;
+  const longitude = element.lon ?? element.center?.lon;
+  const category = overpassCategory(tags);
+  const indoorLikely = overpassIndoorLikely(tags, title);
+  const osmPath = element.type === "node" ? "node" : element.type;
+
+  return {
+    id: `osm-${element.type}-${element.id}`,
+    title,
+    source: "OpenStreetMap / Overpass API",
+    sourceUrl: "https://www.openstreetmap.org/",
+    link: `https://www.openstreetmap.org/${osmPath}/${element.id}`,
+    category,
+    summary: overpassSummary(tags, category),
+    image: overpassImage(tags, category),
+    indoorLikely,
+    recommendationReason: indoorLikely
+      ? "Buena opción interior o cultural para horas de calor."
+      : "Revisar franja horaria y priorizar primeras o últimas horas del día.",
+    address: [tags["addr:street"], tags["addr:housenumber"], tags["addr:city"]].filter(Boolean).join(", ") || undefined,
+    latitude,
+    longitude,
+  };
+}
+
+function overpassCategory(tags: Record<string, string>) {
+  const text = `${tags.tourism ?? ""} ${tags.historic ?? ""} ${tags.leisure ?? ""} ${tags.natural ?? ""} ${tags.amenity ?? ""}`.toLowerCase();
+  if (/museum|gallery|artwork|arts_centre|theatre|castle|monument|memorial|archaeological/.test(text)) return "Cultura";
+  if (/beach|viewpoint|park|garden|nature_reserve/.test(text)) return "Exterior";
+  return "Ocio";
+}
+
+function overpassIndoorLikely(tags: Record<string, string>, title: string) {
+  const text = `${title} ${tags.tourism ?? ""} ${tags.amenity ?? ""}`.toLowerCase();
+  return /museum|gallery|theatre|arts_centre|maca|marq|mubag|museo/.test(text);
+}
+
+function overpassSummary(tags: Record<string, string>, category: string) {
+  if (tags.description) return tags.description;
+  if (tags.wikipedia) return `Punto de interés con referencia en Wikipedia: ${tags.wikipedia}.`;
+  if (tags.wikidata) return `Punto de interés enlazado a Wikidata (${tags.wikidata}).`;
+  return category === "Exterior"
+    ? "Espacio exterior de interés turístico o paisajístico registrado en OpenStreetMap."
+    : "Punto cultural o patrimonial registrado en OpenStreetMap.";
+}
+
+function overpassImage(tags: Record<string, string>, category: string) {
+  if (tags.image?.startsWith("http")) return tags.image;
+  if (category === "Exterior") return "https://upload.wikimedia.org/wikipedia/commons/8/87/Explanada_de_Espa%C3%B1a%2C_Alicante.jpg";
+  return "https://upload.wikimedia.org/wikipedia/commons/6/69/Castillo_de_Santa_B%C3%A1rbara%2C_Alicante%2C_Espa%C3%B1a%2C_2014-07-04%2C_DD_47.JPG";
+}
+
+function dedupeOverpassPlaces(places: TourismPlace[]) {
+  const seen = new Set<string>();
+  return places.filter((place) => {
+    const key = normalizeDedupeKey(place.title);
+    if (!place.latitude || !place.longitude || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function normalizeDedupeKey(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 export function buildWeatherAlerts(weather: LiveWeather) {
@@ -258,49 +416,13 @@ export async function getMonthlyTourismSeries(): Promise<MonthlyTourismSeries> {
 
 async function fetchAlicanteTourismEvents(): Promise<LiveEvent[]> {
   try {
-    const response = await fetch("https://alicanteturismo.com/wp-json/wp/v2/mec-events?per_page=10&orderby=modified&order=desc", {
-      next: { revalidate: 1800 },
+    const response = await fetch("https://alicanteturismo.com/wp-json/wp/v2/mec-events?per_page=30&orderby=modified&order=desc", {
+      cache: "no-store",
     });
     if (!response.ok) throw new Error(`Alicante Turismo ${response.status}`);
     const items = (await response.json()) as WordpressEvent[];
 
     return items.map((item) => wordpressToEvent(item, "Alicante City & Beach", "https://alicanteturismo.com/agenda/"));
-  } catch {
-    return [];
-  }
-}
-
-async function fetchMunicipalTourismAgenda(): Promise<LiveEvent[]> {
-  try {
-    const response = await fetch("https://www.alicante.es/es/agenda/turismo", { next: { revalidate: 3600 } });
-    if (!response.ok) throw new Error(`Ayuntamiento ${response.status}`);
-    const html = await response.text();
-    return parseMunicipalAgenda(html).slice(0, 4);
-  } catch {
-    return [];
-  }
-}
-
-async function fetchConventionEvents(): Promise<LiveEvent[]> {
-  try {
-    const response = await fetch("https://www.alicantecongresos.com/agenda", { next: { revalidate: 86400 } });
-    if (!response.ok) throw new Error(`Convention Bureau ${response.status}`);
-    const text = htmlToText(await response.text());
-    const matches = [...text.matchAll(/([A-ZÁÉÍÓÚÑ0-9][^\n]{12,120})\s+(\d{2}-\d{2}-\d{2})\s+Lugar:\s+([^\n]{3,80})/g)];
-
-    return matches.slice(0, 3).map((match, index) => ({
-      id: `congress-${index}-${match[2]}`,
-      title: cleanText(match[1]),
-      source: "Alicante Convention Bureau",
-      sourceUrl: "https://www.alicantecongresos.com/agenda",
-      link: "https://www.alicantecongresos.com/agenda",
-      dateLabel: match[2],
-      location: cleanText(match[3]),
-      category: "MICE",
-      summary: "Evento profesional publicado por Alicante Convention Bureau.",
-      indoorLikely: true,
-      recommendationReason: "Oferta MICE útil para desestacionalización y demanda profesional.",
-    }));
   } catch {
     return [];
   }
@@ -330,34 +452,6 @@ function wordpressToEvent(item: WordpressEvent, source: string, sourceUrl: strin
       ? "Buena alternativa con menor exposición térmica."
       : "Revisar horario y evitar horas centrales si sube el UV o la temperatura.",
   };
-}
-
-function parseMunicipalAgenda(html: string): LiveEvent[] {
-  const text = htmlToText(html);
-  const blocks = text.split(/\n(?=###\s+)/).slice(1);
-
-  return blocks.map((block, index) => {
-    const lines = block.split("\n").map(cleanText).filter(Boolean);
-    const title = lines[0]?.replace(/^###\s*/, "") ?? "Actividad municipal";
-    const dateLine = lines.find((line) => /^De\s+\d|^\d{1,2}\s/.test(line)) ?? "Fecha según agenda municipal";
-    const category = inferCategory(block);
-
-    return {
-      id: `municipal-${index}-${title}`,
-      title,
-      source: "Agenda Turismo Ayuntamiento de Alicante",
-      sourceUrl: "https://www.alicante.es/es/agenda/turismo",
-      link: "https://www.alicante.es/es/agenda/turismo",
-      dateLabel: dateLine,
-      location: inferLocation(block, title),
-      category,
-      summary: cleanText(lines.slice(1, 4).join(" ")).slice(0, 220),
-      indoorLikely: inferIndoor(`${title} ${block}`),
-      recommendationReason: inferIndoor(`${title} ${block}`)
-        ? "Actividad cubierta o cultural, prioritaria si hay calor."
-        : "Actividad exterior: conviene ajustar la franja horaria al confort real.",
-    };
-  });
 }
 
 function calculateComfortScore(input: {
@@ -465,6 +559,76 @@ function extractFirst(text: string, pattern: RegExp) {
 function formatDateLabel(value?: string) {
   if (!value) return "Fecha según fuente";
   return new Intl.DateTimeFormat("es-ES", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(value));
+}
+
+
+
+function isUpcomingDateLabel(label: string) {
+  const eventEndDate = parseEventEndDate(label);
+  if (!eventEndDate) return true;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return eventEndDate >= today;
+}
+
+function parseEventEndDate(label: string) {
+  const normalized = label
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/,/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const rangeMatch = normalized.match(/(?:del\s+)?\d{1,2}\s+al\s+(\d{1,2})\s+de\s+([a-z.]+)\s+de\s+(\d{4})/i);
+  if (rangeMatch) return buildDate(rangeMatch[3], rangeMatch[2], rangeMatch[1]);
+
+  const pairMatch = normalized.match(/(?:\d{1,2}\s+y\s+)?(\d{1,2})\s+de\s+([a-z.]+)\s+de\s+(\d{4})/i);
+  if (pairMatch) return buildDate(pairMatch[3], pairMatch[2], pairMatch[1]);
+
+  const shortMatch = normalized.match(/(\d{1,2})\s+([a-z.]+)\s+(\d{4})/i);
+  if (shortMatch) return buildDate(shortMatch[3], shortMatch[2], shortMatch[1]);
+
+  return undefined;
+}
+
+function buildDate(year: string, monthLabel: string, day: string) {
+  const month = monthToIndex(monthLabel);
+  if (month === undefined) return undefined;
+  return new Date(Number(year), month, Number(day));
+}
+
+function monthToIndex(label: string) {
+  const key = label.replace(".", "");
+  const months: Record<string, number> = {
+    ene: 0,
+    enero: 0,
+    feb: 1,
+    febrero: 1,
+    mar: 2,
+    marzo: 2,
+    abr: 3,
+    abril: 3,
+    may: 4,
+    mayo: 4,
+    jun: 5,
+    junio: 5,
+    jul: 6,
+    julio: 6,
+    ago: 7,
+    agosto: 7,
+    sep: 8,
+    sept: 8,
+    septiembre: 8,
+    setiembre: 8,
+    oct: 9,
+    octubre: 9,
+    nov: 10,
+    noviembre: 10,
+    dic: 11,
+    diciembre: 11,
+  };
+  return months[key];
 }
 
 function inferCategory(text: string) {
