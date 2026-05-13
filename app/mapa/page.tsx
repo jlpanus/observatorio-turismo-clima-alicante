@@ -1,48 +1,37 @@
-import { FilterPills } from "@/components/FilterPills";
+﻿import { FilterPills } from "@/components/FilterPills";
+import { PlacesMap } from "@/components/PlacesMap";
 import { SectionTitle } from "@/components/SectionTitle";
 import { ZoneCard } from "@/components/ZoneCard";
 import { zones } from "@/data/zones";
+import { getTourismPlaces } from "@/lib/liveData";
 
-export default function MapaPage() {
+export const dynamic = "force-dynamic";
+
+export default async function MapaPage() {
+  const places = await getTourismPlaces();
+
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <SectionTitle
-        kicker="Mapa inteligente"
-        title="Zonas de Alicante según confort y saturación"
-        description="Mapa simulado para traducir condiciones climáticas y presión turística en decisiones por zona."
-      />
+    <main className="section-shell py-10">
+      <div className="rounded-[32px] bg-[linear-gradient(135deg,#EEF2FF_0%,#FFFFFF_55%,#E0F2FE_100%)] p-6 sm:p-8">
+        <SectionTitle
+          kicker="Mapa inteligente"
+          title="Zonas de Alicante según confort y saturación"
+          description="Mapa real de Alicante con puntos de interés de OpenStreetMap/Overpass, categorías y coordenadas para orientar visitas."
+        />
+      </div>
 
       <div className="mt-6">
         <FilterPills filters={["Cultura", "Interior", "Exterior", "Evitar calor"]} />
       </div>
 
-      <section className="mt-8 grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-soft">
-          <iframe
-            className="h-[460px] w-full"
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            src="https://www.openstreetmap.org/export/embed.html?bbox=-0.546%2C38.320%2C-0.350%2C38.435&layer=mapnik&marker=38.3452%2C-0.4810"
-            title="Mapa real de Alicante en OpenStreetMap"
-          />
-          <div className="flex flex-col gap-2 border-t border-slate-200 p-4 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between">
-            <p>Mapa real de Alicante basado en OpenStreetMap. Las zonas se interpretan en las tarjetas de decisión.</p>
-            <a
-              className="focus-ring font-semibold text-alicante-blue hover:text-alicante-deep"
-              href="https://www.openstreetmap.org/#map=13/38.3452/-0.4810"
-              rel="noreferrer"
-              target="_blank"
-            >
-              Abrir mapa completo
-            </a>
-          </div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
+      <section className="mt-8 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+        <PlacesMap places={places} />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
           {zones.map((zone) => (
             <ZoneCard key={zone.id} zone={zone} />
           ))}
         </div>
       </section>
-    </div>
+    </main>
   );
 }
