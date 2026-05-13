@@ -16,30 +16,32 @@ const blocks = [
   },
   {
     title: "Metodología sencilla",
-    text: "El índice combina confort térmico simulado, franja horaria, exposición exterior, saturación estimada y disponibilidad de alternativas interiores, usando como marco los riesgos y líneas de adaptación del informe fuente.",
+    text: "El índice combina confort térmico, franja horaria, exposición exterior, saturación estimada y disponibilidad de alternativas interiores, usando como marco los riesgos y líneas de adaptación del informe fuente.",
   },
 ];
 
 export default function SobreElProyectoPage() {
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <SectionTitle
-        kicker="Sobre el proyecto"
-        title="Una herramienta pública para decidir con datos"
-        description="No sustituye la experiencia turística: la hace más segura, clara y adaptable a condiciones reales."
-      />
+    <main className="section-shell py-10">
+      <div className="rounded-[32px] bg-[linear-gradient(135deg,#EEF2FF_0%,#FFFFFF_55%,#E0F2FE_100%)] p-6 sm:p-8">
+        <SectionTitle
+          kicker="Sobre el proyecto"
+          title="Una herramienta pública para decidir con datos"
+          description="No sustituye la experiencia turística: la hace más segura, clara y adaptable a condiciones reales."
+        />
+      </div>
 
       <div className="mt-8 grid gap-5 md:grid-cols-2">
         {blocks.map((block) => (
-          <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-soft" key={block.title}>
-            <h2 className="text-xl font-bold text-slate-950">{block.title}</h2>
-            <p className="mt-3 leading-7 text-slate-700">{block.text}</p>
+          <article className="premium-card p-6" key={block.title}>
+            <h2 className="text-xl font-black text-alicante-ink">{block.title}</h2>
+            <p className="mt-3 leading-7 text-alicante-muted">{block.text}</p>
           </article>
         ))}
       </div>
 
-      <div className="mt-8 rounded-lg border border-alicante-blue/20 bg-alicante-sky p-5 text-alicante-deep">
-        <p className="font-bold">Este MVP combina datos online, datos oficiales publicados y estimaciones metodológicas.</p>
+      <div className="mt-8 rounded-[24px] border border-alicante-violet/20 bg-alicante-violet/10 p-5 text-alicante-deep shadow-soft">
+        <p className="font-black">Este MVP combina datos online, datos oficiales publicados e indicadores metodológicos.</p>
         <p className="mt-2 text-sm leading-6">
           Clima y agenda cultural se consultan online. Las métricas de confort, saturación y visitantes mensualizados se calculan como indicadores de decisión y se muestran con su fuente o criterio.
         </p>
@@ -48,6 +50,6 @@ export default function SobreElProyectoPage() {
       <div className="mt-8">
         <SourceNote />
       </div>
-    </div>
+    </main>
   );
 }
