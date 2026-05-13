@@ -9,17 +9,19 @@ export default async function AlertasPage() {
   const alerts = buildWeatherAlerts(weather);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <SectionTitle
-        kicker="Alertas"
-        title="Avisos climáticos y alternativas recomendadas"
-        description="Avisos derivados del forecast online y complementados con recomendaciones preventivas del MVP."
-      />
+    <main className="section-shell py-10">
+      <div className="rounded-[32px] bg-[linear-gradient(135deg,#EEF2FF_0%,#FFFFFF_55%,#E0F2FE_100%)] p-6 sm:p-8">
+        <SectionTitle
+          kicker="Alertas"
+          title="Avisos climáticos y alternativas recomendadas"
+          description="Avisos derivados del forecast online y complementados con recomendaciones preventivas del MVP."
+        />
+      </div>
       <div className="mt-6 grid gap-5">
         {alerts.map((alert) => (
           <AlertBanner alert={alert} key={alert.id} />
         ))}
       </div>
-    </div>
+    </main>
   );
 }
